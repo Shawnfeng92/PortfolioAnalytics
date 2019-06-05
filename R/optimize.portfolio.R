@@ -1109,10 +1109,13 @@ optimize.portfolio_v2 <- function(
     #     }
     #   }
     # } #Cleaned objective
-    nO <- nrow(R)                       # number of observations
+    
+    srhelper <- function(R, weight) {
+      return(mean(R%*%weight) / var(R%*%weight))
+    }
+    
     nA <- length(portfolio$assets)      # number of assets
     mu <- apply(R, 2, mean)             # means
-    P <- 2 * cov(R)                     # covariance matrix
     
     # A is the constraint matrix
     A <- rbind(rep(1, nA), diag(1, nA))
@@ -1120,30 +1123,28 @@ optimize.portfolio_v2 <- function(
     # These are upper and lower bound
     u <- c(constraints$max_sum, constraints$max)
     l <- c(constraints$min_sum, constraints$min)
-  
-    # Solve the min variance for later use
-    q <- rep(0, nA)
-    solQP <- solve_osqp(P, q, A, l, u, pars = osqpSettings(verbose = 0))
     
-    srhelper <- function(R, x)
-    {
-      return(mean(R%*%x) / var(R%*%x))
-    }
-    # For max return and max Sharpe ratio
-    if(osqp.return & !osqp.risk) {
-      P <- matrix(rep(0, nO * nO), nO)
-      q <- -1 * mu
-      solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
-    } else if(osqp.return & osqp.risk) {
+    # Solve the max return for later use
+    P <- matrix(rep(0, nA * nA), nA)
+    q <- -1 * mu
+    max <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
+
+    # Solve the min variance for later use
+    P <- 2 * cov(R)
+    q <- rep(0, nA)
+    min <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
+    
+    # max Sharpe ratio
+    if(osqp.return & osqp.risk) {
       if (!is.null(constraints$risk_aversion)) {
         q <- -1 * constraints$risk_aversion * mu
         solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
       } else {
-        min_return <- min(0, sum(R %*% solQP$x))
-        max_return <- max(apply(R, 2, max))
+        min_return <- sum(R %*% min$x)
+        max_return <- sum(R %*% max$x)
+        
         n <- 10
         while (n>0){
-          print(n)
           desire_returns <- seq(from = min_return , to = max_return ,by = (max_return - min_return)/10)
           return_list <- c()
           
@@ -1154,8 +1155,9 @@ optimize.portfolio_v2 <- function(
             u <- c(desire_returns[i], constraints$max_sum, constraints$max)
             l <- c(desire_returns[i], constraints$min_sum, constraints$min)
             
-            solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
+            solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 1))
             return_list <- rbind(return_list, solQP$x)
+            
             if(i>2){
               if ((srhelper(R, return_list[i-1,])>srhelper(R, return_list[i,]))
                   & (srhelper(R, return_list[i-1,])>srhelper(R, return_list[i-2,]))){
