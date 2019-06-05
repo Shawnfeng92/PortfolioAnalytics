@@ -538,7 +538,7 @@ optimize.portfolio_v2 <- function(
   weights <- NULL 
   
   # Get the constraints from the portfolio object
-  constraints <- get_constraints(portfolio)
+  constraints <- PortfolioAnalytics:::get_constraints(portfolio)
   
   # set portfolio moments only once
   # For set.portfolio.moments, we are passing the returns,
@@ -558,7 +558,7 @@ optimize.portfolio_v2 <- function(
   
   # match the args for momentFUN
   .formals <- formals(momentFUN)
-  .formals <- modify.args(formals=.formals, arglist=NULL, ..., dots=FALSE)
+  .formals <- PortfolioAnalytics:::modify.args(formals=.formals, arglist=NULL, ..., dots=FALSE)
   # ** pass ROI=TRUE to set.portfolio.moments so the moments are not calculated
   if(optimize_method %in% c("ROI", "quadprog", "glpk", "symphony", "ipop", "cplex")){
     obj_names <- unlist(lapply(portfolio$objectives, function(x) x$name))
@@ -566,8 +566,8 @@ optimize.portfolio_v2 <- function(
       .formals <- modify.args(formals=.formals, arglist=list(ROI=TRUE), dots=TRUE)
     }
   }
-  if("R" %in% names(.formals)) .formals <- modify.args(formals=.formals, arglist=NULL, R=R, dots=FALSE)
-  if("portfolio" %in% names(.formals)) .formals <- modify.args(formals=.formals, arglist=NULL, portfolio=portfolio, dots=FALSE)
+  if("R" %in% names(.formals)) .formals <- PortfolioAnalytics:::modify.args(formals=.formals, arglist=NULL, R=R, dots=FALSE)
+  if("portfolio" %in% names(.formals)) .formals <- PortfolioAnalytics:::modify.args(formals=.formals, arglist=NULL, portfolio=portfolio, dots=FALSE)
   .formals$... <- NULL
   
   # call momentFUN
@@ -1080,6 +1080,59 @@ optimize.portfolio_v2 <- function(
     }
     
   } ## end case for GenSA
+  
+  ## case if method=osqp---Operator Splitting Solver for Quadratic Programs
+  if(optimize_method=="osqp"){
+    #osqp is a mathematic solver which can not handle max position parameter
+    if(!is.null(constraints$max_pos)){ 
+      stop("osqp can not handle max position constraint, choose a different optimize_method.")
+    }
+    
+    # Determine objectives' type
+    osqp.return = 0
+    osqp.risk = 0
+    
+    Filter all objectives to find unvalid objectives, meanwhile mark objective types
+    for(objective in portfolio$objectives){
+      if(objective$enabled){
+        if(objective$type == "return"){
+          if(objectives$name != "mean") {
+            stop("osqp only solves mean,var/StdDev type business objectives, choose a different optimize_method.")
+          }
+          osqp.return = 1
+        }
+        if(objective$type == "risk"){
+          if(!objectives$name %in% c("sd", "var", "StdDev")) {
+            stop("osqp only solves mean,var/StdDev type business objectives, choose a different optimize_method.")
+          }
+          osqp.risk = 1
+        } else {
+          stop("osqp only solves mean, var/StdDev type business objectives, choose a different optimize_method.")
+        }
+      }
+    } #Cleaned objective
+    
+    nO <- nrow(R)     # number of observations
+    nA <- length(portfolio$assets)      # number of assets
+    mu <- apply(R, 2, mean)    # means
+    
+    # osqp
+    P <- cov(R)
+    q <- 1 # set expectation of portfolio excess return to 1
+    zeros <- array(0, dim = c(nA,1))
+    
+    # A is the constraint matrix
+    A <- rbind(mu, diag(1, nA), rep(1, nA))
+    
+    # These are upper and lower bound
+    u <- c(1, constraints$max, constraints$max_sum)
+    l <- c(1, constraints$min, constraints$min_sum)
+    
+    solQP <- solve_osqp(P, zeros, A, l, u)
+    
+    print(solQP$x)
+    
+  } ## end case for osqp
   
   # Prepare for final object to return
   end_t <- Sys.time()
