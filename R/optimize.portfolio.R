@@ -1109,8 +1109,6 @@ optimize.portfolio_v2 <- function(
     #     }
     #   }
     # } #Cleaned objective
-    
-    
     nO <- nrow(R)                       # number of observations
     nA <- length(portfolio$assets)      # number of assets
     mu <- apply(R, 2, mean)             # means
@@ -1122,46 +1120,56 @@ optimize.portfolio_v2 <- function(
     # These are upper and lower bound
     u <- c(constraints$max, constraints$max_sum)
     l <- c(constraints$min, constraints$min_sum)
-    
+  
     # Solve the min variance for later use
     q <- rep(0, nA)
-    solQP <- solve_osqp(P, q, A, l, u)
+    solQP <- solve_osqp(P, q, A, l, u, pars = osqpSettings(verbose = 0))
     
+    srhelper <- function(R, x)
+    {
+      return(mean(R%*%x) / var(R%*%x))
+    }
     # For max return and max Sharpe ratio
     if(osqp.return & !osqp.risk) {
       P <- matrix(rep(0, nO * nO), nO)
       q <- -1 * mu
-      solQP <- solve_osqp(P, q, A, l, u)
+      solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
     } else if(osqp.return & osqp.risk) {
       if (!is.null(constraints$risk_aversion)) {
         q <- -1 * constraints$risk_aversion * mu
-        solQP <- solve_osqp(P, q, A, l, u)
+        solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
       } else {
-        min_return <- sum(R %*% solQP$x)
+        min_return <- min(0, sum(R %*% solQP$x))
         max_return <- max(apply(R, 2, max))
-        
-        desire_returns <- seq(from = min_return , to = max_return ,by = (max_return - min_return)/100)
-        max <- sum(R %*% solQP$x)
-        
-        for (desire_return in desire_returns) {
-          # A is the constraint matrix
-          A <- rbind(mu, rep(1, nA), diag(1, nA))
+        n <- 1
+        while (n>0){
+          desire_returns <- seq(from = min_return , to = max_return ,by = (max_return - min_return)/10)
+          return_list <- c()
           
-          # These are upper and lower bound
-          u <- c(desire_return, constraints$max, constraints$max_sum)
-          l <- c(desire_return, constraints$min, constraints$min_sum)
-          
-          solQP <- solve_osqp(P, q, A, l, u)
-          if (sum(R %*% solQP$x) > max) {
-            out = list(weights = solQP$x,
-                       out = solQP$y)
+          for (i in 1:length(desire_returns)) {
+            # A is the constraint matrix
+            A <- rbind(mu, rep(1, nA), diag(1, nA))
+            # These are upper and lower bound
+            u <- c(desire_returns[i] + 0.00005, constraints$max, constraints$max_sum)
+            l <- c(desire_returns[i] - 0.00005, constraints$min, constraints$min_sum)
+            print(i)
+            solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
+            return_list <- rbind(return_list, solQP$x)
+            if(i>2){
+              if ((srhelper(R, return_list[i-1,])>srhelper(R, return_list[i,]))
+                  & (srhelper(R, return_list[i-1,])>srhelper(R, return_list[i-2,]))){
+                min_return <- sum(R %*% return_list[i-2])
+                max_return <- sum(R %*% return_list[i])
+                n <- n-1
+                break
+              }
+            }
+            n <- n-1
           }
-        }
+        }  
       }
     }
   } ## end case for osqp
-  
-  print(out)
   
   # Prepare for final object to return
   end_t <- Sys.time()
