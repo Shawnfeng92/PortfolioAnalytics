@@ -1087,8 +1087,8 @@ optimize.portfolio_v2 <- function(
     # warning("osqp can only handle box constraints and mean, var/StdDev type objectives")
     
     # Determine objectives' type
-    osqp.return <- 0
-    osqp.risk <- 0
+    osqp.return <- 1
+    osqp.risk <- 1
     
     # Filter all objectives to find unvalid objectives, meanwhile mark objective types
     # for(objective in portfolio$objectives){
@@ -1118,8 +1118,8 @@ optimize.portfolio_v2 <- function(
     A <- rbind(rep(1, nA), diag(1, nA))
     
     # These are upper and lower bound
-    u <- c(constraints$max, constraints$max_sum)
-    l <- c(constraints$min, constraints$min_sum)
+    u <- c(constraints$max_sum, constraints$max)
+    l <- c(constraints$min_sum, constraints$min)
   
     # Solve the min variance for later use
     q <- rep(0, nA)
@@ -1141,8 +1141,9 @@ optimize.portfolio_v2 <- function(
       } else {
         min_return <- min(0, sum(R %*% solQP$x))
         max_return <- max(apply(R, 2, max))
-        n <- 1
+        n <- 10
         while (n>0){
+          print(n)
           desire_returns <- seq(from = min_return , to = max_return ,by = (max_return - min_return)/10)
           return_list <- c()
           
@@ -1150,9 +1151,9 @@ optimize.portfolio_v2 <- function(
             # A is the constraint matrix
             A <- rbind(mu, rep(1, nA), diag(1, nA))
             # These are upper and lower bound
-            u <- c(desire_returns[i] + 0.00005, constraints$max, constraints$max_sum)
-            l <- c(desire_returns[i] - 0.00005, constraints$min, constraints$min_sum)
-            print(i)
+            u <- c(desire_returns[i], constraints$max_sum, constraints$max)
+            l <- c(desire_returns[i], constraints$min_sum, constraints$min)
+            
             solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
             return_list <- rbind(return_list, solQP$x)
             if(i>2){
@@ -1164,7 +1165,6 @@ optimize.portfolio_v2 <- function(
                 break
               }
             }
-            n <- n-1
           }
         }  
       }
