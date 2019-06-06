@@ -863,7 +863,6 @@ optimize.portfolio_v2 <- function(
         if(!is.null(objective$conc_groups)) conc_groups <- objective$conc_groups else conc_groups <- NULL
       }
     }
-    
     if("var" %in% names(moments)){
       # Set a default solver if optimize_method == "ROI", otherwise assume the
       # optimize_method specified by the user is the solver for ROI
@@ -902,7 +901,7 @@ optimize.portfolio_v2 <- function(
           tmp_moments_mean <- moments$mean
           moments$mean <- rep(0, length(moments$mean))
         }
-        roi_result <- gmv_opt(R=R, constraints=constraints, moments=moments, lambda=lambda, target=target, lambda_hhi=lambda_hhi, conc_groups=conc_groups, solver=solver, control=control)
+        roi_result <- PortfolioAnalytics:::gmv_opt(R=R, constraints=constraints, moments=moments, lambda=lambda, target=target, lambda_hhi=lambda_hhi, conc_groups=conc_groups, solver=solver, control=control)
         weights <- roi_result$weights
         # obj_vals <- constrained_objective(w=weights, R=R, portfolio, trace=TRUE, normalize=FALSE)$objective_measures
         obj_vals <- roi_result$obj_vals
@@ -915,6 +914,7 @@ optimize.portfolio_v2 <- function(
         out <- list(weights=weights, objective_measures=obj_vals, opt_values=obj_vals, out=roi_result$out, call=call)
       }
     }
+    
     if(length(names(moments)) == 1 & "mean" %in% names(moments)) {
       # Set a default solver if optimize_method == "ROI", otherwise assume the
       # optimize_method specified by the user is the solver for ROI
@@ -1140,10 +1140,9 @@ optimize.portfolio_v2 <- function(
         q <- -1 * constraints$risk_aversion * mu
         solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
       } else {
-        min_return <- sum(R %*% min$x)
-        max_return <- sum(R %*% max$x)
-        
-        n <- 10
+        min_return <- mean(R %*% min$x)
+        max_return <- mean(R %*% max$x)
+        n <- 3
         while (n>0){
           desire_returns <- seq(from = min_return , to = max_return ,by = (max_return - min_return)/10)
           return_list <- c()
@@ -1155,20 +1154,26 @@ optimize.portfolio_v2 <- function(
             u <- c(desire_returns[i], constraints$max_sum, constraints$max)
             l <- c(desire_returns[i], constraints$min_sum, constraints$min)
             
-            solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 1))
+            solQP <- solve_osqp(P, q, A, l, u, osqpSettings(verbose = 0))
             return_list <- rbind(return_list, solQP$x)
-            
             if(i>2){
               if ((srhelper(R, return_list[i-1,])>srhelper(R, return_list[i,]))
                   & (srhelper(R, return_list[i-1,])>srhelper(R, return_list[i-2,]))){
-                min_return <- sum(R %*% return_list[i-2])
-                max_return <- sum(R %*% return_list[i])
+                min_return <- sum(R %*% return_list[i-2,])
+                max_return <- sum(R %*% return_list[i,])
                 n <- n-1
                 break
               }
             }
+            n <- n-1
           }
-        }  
+        }
+        print(dim(R))
+        print(round(return_list[i-1,],2))
+        out = list(weights=return_list[i-1,], 
+                   objective_measures=mean(R %*% return_list[i-1,]),
+                   opt_values=stdev(R %*% return_list[i-1,]), 
+                   call=call)
       }
     }
   } ## end case for osqp
