@@ -1159,8 +1159,8 @@ optimize.portfolio_v2 <- function(
             if(i>2){
               if ((srhelper(R, return_list[i-1,])>srhelper(R, return_list[i,]))
                   & (srhelper(R, return_list[i-1,])>srhelper(R, return_list[i-2,]))){
-                min_return <- sum(R %*% return_list[i-2,])
-                max_return <- sum(R %*% return_list[i,])
+                min_return <- mean(R %*% return_list[i-2,])
+                max_return <- mean(R %*% return_list[i,])
                 n <- n-1
                 break
               }
