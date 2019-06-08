@@ -1,0 +1,6 @@
+
+*.c
+*.o
+*.dll
+R/.Rhistory
+R/.RData
