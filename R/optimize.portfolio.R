@@ -1093,32 +1093,28 @@ optimize.portfolio_v2 <- function(
   
   ## case if method=osqp---Operator Splitting Solver for Quadratic Programs
   if(optimize_method=="osqp"){
-    #osqp is a mathematic solver which has many restrictions
-    # warning("osqp can only handle box constraints and mean, var/StdDev type objectives")
+    # osqp is a mathematic solver which has many restrictions
+    # warning for constraints
+    for (i in names(constraints)) {
+      if (!i %in% c("min_sum", "max_sum", "min", "max", "return_target")) {
+        stop("osqp can only solve box and return_target constraints, please choose a different optimize_method.")
+      }
+    }
     
-    # Determine objectives' type
-    osqp.return <- 1
-    osqp.risk <- 1
+    # optimization type
+    osqp.return <- 0
+    osqp.risk <- 0
     
-    # Filter all objectives to find unvalid objectives, meanwhile mark objective types
-    # for(objective in portfolio$objectives){
-    #   if(objective$enabled){
-    #     if(objective$type == "return"){
-    #       if(objectives$name != "mean") {
-    #         stop("osqp only solves mean,var/StdDev type business objectives, choose a different optimize_method.")
-    #       }
-    #       osqp.return <- 1
-    #     }
-    #     if(objective$type == "risk"){
-    #       if(!objectives$name %in% c("sd", "var", "StdDev")) {
-    #         stop("osqp only solves mean,var/StdDev type business objectives, choose a different optimize_method.")
-    #       }
-    #       osqp.risk <- 1
-    #     } else {
-    #       stop("osqp only solves mean, var/StdDev type business objectives, choose a different optimize_method.")
-    #     }
-    #   }
-    # } #Cleaned objective
+    valid_risk = c("sd", "SD", "StdDev", "sigma", "volatility")
+    valid_return = c("mean")
+    
+    # warning for objectives
+    for (i in portfolio$objectives) {
+      if ((i$enabled)&(i$name %in% valid_return)) osqp.return <- 1
+      else if ((i$enabled)&(i$name %in% valid_risk)) osqp.risk <- 1
+      else stop("osqp only solves mean, sd, or Sharpe Ratio type business objectives, choose a different optimize_method.")
+    }
+    
     
     srhelper <- function(R, weight) {
       return(mean(R%*%weight) / var(R%*%weight))
@@ -1180,7 +1176,7 @@ optimize.portfolio_v2 <- function(
         }
         out = list(weights=return_list[i-1,], 
                    objective_measures=mean(R %*% return_list[i-1,]),
-                   opt_values=stdev(R %*% return_list[i-1,]), 
+                   opt_values=sd(R %*% return_list[i-1,]), 
                    call=call)
       }
     }
