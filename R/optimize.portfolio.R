@@ -1115,6 +1115,8 @@ optimize.portfolio_v2 <- function(
       else stop("osqp only solves mean, sd, or Sharpe Ratio type business objectives, choose a different optimize_method.")
     }
     
+    print("Smoke")
+    
     
     srhelper <- function(R, weight) {
       return(mean(R%*%weight) / var(R%*%weight))
