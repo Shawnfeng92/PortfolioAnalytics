@@ -1117,11 +1117,11 @@ optimize.portfolio_v2 <- function(
     
     param <- osqpSettings(verbose = 0)
     
-    nA <- length(portfolio$assets)      # number of assets
+    N <- length(portfolio$assets)      # number of assets
     mu <- apply(R, 2, mean)             # means
     
     # A is the constraint matrix
-    A <- rbind(rep(1, nA), diag(1, nA))
+    A <- rbind(rep(1, N), diag(1, N))
     
     # These are upper and lower bound
     u <- c(constraints$max_sum, constraints$max)
@@ -1129,36 +1129,36 @@ optimize.portfolio_v2 <- function(
     
     
     if (!is.null(constraints$return_target)) {
-      if (osqp.risk) {
+      if (!osqp.risk) {
+        stop("For targeted return, you need a specific risk level to process.")
+      } else {
         P <- 2 * cov(R)
-        q <- rep(0, nA)
-        result <- solve_osqp(P, q, A, l, u, param) 
-      } else if(osqp.return & osqp.risk) {
-        P <- 2 * cov(R)
-        q <- rep(0, nA)
-        A <- rbind(rep(1, nA), diag(1, nA), mu)
+        q <- rep(0, N)
+        A <- rbind(rep(1, N), diag(1, N), mu)
         u <- c(constraints$max_sum, constraints$max, constraints$return_target)
         l <- c(constraints$min_sum, constraints$min, constraints$return_target)
         result <- solve_osqp(P, q, A, l, u, param)
       }
     } else {
       if (osqp.return) {
-        P <- matrix(rep(0, nA * nA), nA)
+        P <- matrix(rep(0, N * N), N)
         q <- -1 * mu
         max <- solve_osqp(P, q, A, l, u, param)
       }
       
       if (osqp.risk) {
         P <- 2 * cov(R)
-        q <- rep(0, nA)
+        q <- rep(0, N)
         min <- solve_osqp(P, q, A, l, u, param) 
       }
+      
       sr <- function(r) {
         u <- c(constraints$max_sum, constraints$max, r)
         l <- c(constraints$min_sum, constraints$min, r)
         temp <- R %*% solve_osqp(P, q, A, l, u, param)$x
         return(mean(temp) / sd(temp))
       }
+      
       # max Sharpe ratio
       if(osqp.return & osqp.risk) {
         if(!is.null(constraints$risk_averion)) {
@@ -1166,7 +1166,7 @@ optimize.portfolio_v2 <- function(
           q <- -1 * constraints$risk_averion * mu
           result <- solve_osqp(P, q, A, l, u, param)
         } else {
-          A <- rbind(rep(1, nA), diag(1, nA), mu)
+          A <- rbind(rep(1, N), diag(1, N), mu)
           max_return <- mean(R %*% max$x)
           min_return <- mean(R %*% min$x)
           repeat {
@@ -1192,6 +1192,16 @@ optimize.portfolio_v2 <- function(
         }
       }
     }
+    if (osqp.risk&!osqp.return) {
+      result <- min
+    }
+    if (!osqp.risk&osqp.return) {
+      result <- max
+    }
+    
+    out = list(weights=result$x,
+               call=call)
+    
   } ## end case for osqp
   
   # Prepare for final object to return
