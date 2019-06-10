@@ -1095,7 +1095,6 @@ optimize.portfolio_v2 <- function(
   if(optimize_method=="osqp"){
     # osqp is a mathematic solver which has many restrictions
     # warning for constraints
-    print(constraints)
     valid_constraints <- c("min_sum", "max_sum", "min", "max", "return_target", "groups", "group_labels", "cLO", "cUP")
     for (i in names(constraints)) {
       if (!i %in% valid_constraints) {
@@ -1251,6 +1250,7 @@ optimize.portfolio_v2 <- function(
       result <- max
     }
     
+    print(A %*% result$x)
     out = list(weights=result$x,
                call=call)
     
