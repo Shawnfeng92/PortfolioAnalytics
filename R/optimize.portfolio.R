@@ -1095,8 +1095,10 @@ optimize.portfolio_v2 <- function(
   if(optimize_method=="osqp"){
     # osqp is a mathematic solver which has many restrictions
     # warning for constraints
+    print(constraints)
+    valid_constraints <- c("min_sum", "max_sum", "min", "max", "return_target", "groups", "group_labels", "cLO", "cUP")
     for (i in names(constraints)) {
-      if (!i %in% c("min_sum", "max_sum", "min", "max", "return_target")) {
+      if (!i %in% valid_constraints) {
         stop("osqp can only solve box and return_target constraints, please choose a different optimize_method.")
       }
     }
@@ -1121,12 +1123,25 @@ optimize.portfolio_v2 <- function(
     mu <- apply(R, 2, mean)             # means
     
     # A is the constraint matrix
-    A <- rbind(rep(1, N), diag(1, N))
+    A0 <- rbind(rep(1, N), diag(1, N))
     
     # These are upper and lower bound
-    u <- c(constraints$max_sum, constraints$max)
-    l <- c(constraints$min_sum, constraints$min)
+    u0 <- c(constraints$max_sum, constraints$max)
+    l0 <- c(constraints$min_sum, constraints$min)
     
+    if ("groups" %in% names(constraints)) {
+      for (i in constraints$groups) {
+        t <- rep(0, N)
+        t[i] <- 1
+        A0 <- rbind(A0, t)
+      }
+      for (i in constraints$cUP) {
+        u0 <- c(u0, i)
+      }
+      for (i in constraints$cLO) {
+        l0 <- c(l0, i)
+      }
+    }
     
     if (!is.null(constraints$return_target)) {
       if (!osqp.risk) {
@@ -1134,27 +1149,27 @@ optimize.portfolio_v2 <- function(
       } else {
         P <- 2 * cov(R)
         q <- rep(0, N)
-        A <- rbind(rep(1, N), diag(1, N), mu)
-        u <- c(constraints$max_sum, constraints$max, constraints$return_target)
-        l <- c(constraints$min_sum, constraints$min, constraints$return_target)
+        A <- rbind(A0, mu)
+        u <- c(u0, constraints$return_target)
+        l <- c(l0, constraints$return_target)
         result <- solve_osqp(P, q, A, l, u, param)
       }
     } else {
       if (osqp.return) {
         P <- matrix(rep(0, N * N), N)
         q <- -1 * mu
-        max <- solve_osqp(P, q, A, l, u, param)
+        max <- solve_osqp(P, q, A0, l0, u0, param)
       }
       
       if (osqp.risk) {
         P <- 2 * cov(R)
         q <- rep(0, N)
-        min <- solve_osqp(P, q, A, l, u, param) 
+        min <- solve_osqp(P, q, A0, l0, u0, param) 
       }
       
       sr <- function(r) {
-        u <- c(constraints$max_sum, constraints$max, r)
-        l <- c(constraints$min_sum, constraints$min, r)
+        u <- c(u0, r)
+        l <- c(l0, r)
         temp <- R %*% solve_osqp(P, q, A, l, u, param)$x
         return(mean(temp) / sd(temp))
       }
@@ -1166,29 +1181,66 @@ optimize.portfolio_v2 <- function(
           q <- -1 * constraints$risk_averion * mu
           result <- solve_osqp(P, q, A, l, u, param)
         } else {
-          A <- rbind(rep(1, N), diag(1, N), mu)
+          A <- rbind(A0, mu)
           max_return <- mean(R %*% max$x)
-          min_return <- mean(R %*% min$x)
+          min_return <- max(0.000001, mean(R %*% min$x))
+          # repeat {
+          #   return_list <- seq(from = min_return, to = max_return, length.out = 10)
+          #   sharpe_list <- c()
+          #   for (i in return_list) {
+          #     sharpe_list <- c(sharpe_list, sr)
+          #     if (i > 2) {
+          #       if((sharp_list[i-1] <= sharp_list[i]) &
+          #          (sharp_list[i-1] <= sharp_list[i-2])){
+          #         min_return <- return_list[i-2]
+          #         max_return <- return_list[i]
+          #         break
+          #       }
+          #     }
+          #   }
+          #   target_return <- min(return_list)
+          #   u <- c(constraints$max_sum, constraints$max, target_return)
+          #   l <- c(constraints$min_sum, constraints$min, target_return)
+          #   result <- solve_osqp(P, q, A, l, u, param)
+          #   break
+          # }
+          max <- -9999999
           repeat {
-            return_list <- seq(from = min_return, to = max_return, length.out = 10)
+            return_list <- seq(from = min_return, to = max_return, length.out = 4)
             sharpe_list <- c()
             for (i in return_list) {
-              sharpe_list <- c(sharpe_list, sr)
-              if (i > 2) {
-                if((sharp_list[i-1] <= sharp_list[i]) &
-                   (sharp_list[i-1] <= sharp_list[i-2])){
-                  min_return <- return_list[i-2]
-                  max_return <- return_list[i]
-                  break
-                }
-              }
+              sharpe_list <- c(sharpe_list, sr(i))
             }
-            target_return <- min(return_list)
-            u <- c(constraints$max_sum, constraints$max, target_return)
-            l <- c(constraints$min_sum, constraints$min, target_return)
-            result <- solve_osqp(P, q, A, l, u, param)
-            break
+            if (sharpe_list[2] == max(sharpe_list)) {
+              max_return <- return_list[3]
+              min_return <- return_list[1]
+            }
+            if (sharpe_list[3] == max(sharpe_list)) {
+              max_return <- return_list[4]
+              min_return <- return_list[2]
+            }
+            if (sharpe_list[1] == max(sharpe_list)) {
+              if (abs(sharpe_list[1] - max) < 0.01) {
+                target_return <- return_list[1]
+                break
+              }
+              max <- sharpe_list[1]
+              max_return <- return_list[2]
+              min_return <- return_list[1]
+            }
+            if (sharpe_list[4] == max(sharpe_list)) {
+              if (abs(sharpe_list[4] - max) < 0.01) {
+                target_return <- return_list[4]
+                break
+              }
+              max <- sharpe_list[4]
+              max_return <- return_list[4]
+              min_return <- return_list[3]
+            }
           }
+          u <- c(u0, target_return)
+          l <- c(l0, target_return)
+          result <- solve_osqp(P, q, A, l, u, param)
         }
       }
     }
