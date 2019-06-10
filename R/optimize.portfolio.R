@@ -1203,7 +1203,7 @@ optimize.portfolio_v2 <- function(
           #   result <- solve_osqp(P, q, A, l, u, param)
           #   break
           # }
-          max <- -9999999
+          max <- -Inf
           repeat {
             return_list <- seq(from = min_return, to = max_return, length.out = 4)
             sharpe_list <- c()
@@ -1250,7 +1250,6 @@ optimize.portfolio_v2 <- function(
       result <- max
     }
     
-    print(A %*% result$x)
     out = list(weights=result$x,
                call=call)
     
