@@ -1093,33 +1093,33 @@ optimize.portfolio_v2 <- function(
   
   ## case if method=osqp---Operator Splitting Solver for Quadratic Programs
   if(optimize_method=="osqp"){
-    # osqp is a mathematic solver which has many restrictions
-    # warning for constraints
-    valid_constraints <- c("min_sum", "max_sum", "min", "max", "return_target", "groups", "group_labels", "cLO", "cUP")
+    
+    stopifnot("package:osqp" %in% search()  ||  require("osqp",quietly = TRUE) )
+    
+    valid_constraints <- c("min_sum", "max_sum", "min", "max", 
+                           "return_target", "groups", "group_labels", 
+                           "cLO", "cUP")
+    
     for (i in names(constraints)) {
       if (!i %in% valid_constraints) {
         stop("osqp can only solve box and return_target constraints, please choose a different optimize_method.")
       }
     }
     
-    # optimization type
     osqp.return <- 0
     osqp.risk <- 0
     
     valid_risk = c("sd", "SD", "StdDev", "sigma", "volatility")
     valid_return = c("mean")
     
-    # warning for objectives
     for (i in portfolio$objectives) {
       if ((i$enabled)&(i$name %in% valid_return)) osqp.return <- 1
       else if ((i$enabled)&(i$name %in% valid_risk)) osqp.risk <- 1
       else stop("osqp only solves mean, sd, or Sharpe Ratio type business objectives, choose a different optimize_method.")
     }
     
-    param <- osqpSettings(verbose = 0)
-    
-    N <- length(portfolio$assets)      # number of assets
-    mu <- apply(R, 2, mean)             # means
+    mu <- apply(R, 2, mean)
+    covmatrix <- cov(R)
     
     # A is the constraint matrix
     A0 <- rbind(rep(1, N), diag(1, N))
@@ -1143,6 +1143,41 @@ optimize.portfolio_v2 <- function(
     }
     
     if (!is.null(constraints$return_target)) {
+      if (osqp.risk) {
+        P <- 2 * covmatrix
+        q <- rep(0, N)
+        A <- rbind(A0, mu)
+        l <- c(l0, constraints$return_target))
+        u <- c(u0, Inf)
+        minw <- try(solve_osqp(P, q, A, l, u))
+      } else {
+        
+      }
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    if (!is.null(constraints$return_target)) {
       if (!osqp.risk) {
         stop("For targeted return, you need a specific risk level to process.")
       } else {
@@ -1151,25 +1186,25 @@ optimize.portfolio_v2 <- function(
         A <- rbind(A0, mu)
         u <- c(u0, constraints$return_target)
         l <- c(l0, constraints$return_target)
-        result <- solve_osqp(P, q, A, l, u, param)
+        result <- solve_osqp(P, q, A, l, u)
       }
     } else {
       if (osqp.return) {
         P <- matrix(rep(0, N * N), N)
         q <- -1 * mu
-        max <- solve_osqp(P, q, A0, l0, u0, param)
+        max <- solve_osqp(P, q, A0, l0, u0)
       }
       
       if (osqp.risk) {
         P <- 2 * cov(R)
         q <- rep(0, N)
-        min <- solve_osqp(P, q, A0, l0, u0, param) 
+        min <- solve_osqp(P, q, A0, l0, u0) 
       }
       
       sr <- function(r) {
         u <- c(u0, r)
         l <- c(l0, r)
-        temp <- R %*% solve_osqp(P, q, A, l, u, param)$x
+        temp <- R %*% solve_osqp(P, q, A, l, u)$x
         return(mean(temp) / sd(temp))
       }
       
@@ -1183,26 +1218,6 @@ optimize.portfolio_v2 <- function(
           A <- rbind(A0, mu)
           max_return <- mean(R %*% max$x)
           min_return <- max(0.000001, mean(R %*% min$x))
-          # repeat {
-          #   return_list <- seq(from = min_return, to = max_return, length.out = 10)
-          #   sharpe_list <- c()
-          #   for (i in return_list) {
-          #     sharpe_list <- c(sharpe_list, sr)
-          #     if (i > 2) {
-          #       if((sharp_list[i-1] <= sharp_list[i]) &
-          #          (sharp_list[i-1] <= sharp_list[i-2])){
-          #         min_return <- return_list[i-2]
-          #         max_return <- return_list[i]
-          #         break
-          #       }
-          #     }
-          #   }
-          #   target_return <- min(return_list)
-          #   u <- c(constraints$max_sum, constraints$max, target_return)
-          #   l <- c(constraints$min_sum, constraints$min, target_return)
-          #   result <- solve_osqp(P, q, A, l, u, param)
-          #   break
-          # }
           max <- -Inf
           repeat {
             return_list <- seq(from = min_return, to = max_return, length.out = 4)
